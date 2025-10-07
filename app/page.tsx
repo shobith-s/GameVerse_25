@@ -1,13 +1,97 @@
 // app/page.tsx
 import Link from "next/link";
-import { Zap, ChevronRight, Trophy, Users2, Gamepad, Target, Ribbon } from "lucide-react";
-import { StatCard } from "@/components/ui/stat-card";
-import { GameCard } from "@/components/ui/game-card";
-import { MatchCard } from "@/components/ui/match-card";
-import { Step } from "@/components/ui/step";
+import type { ReactNode } from "react";
+import {
+  Zap,
+  ChevronRight,
+  Trophy,
+  Users2,
+  Gamepad,
+  Target,
+  Ribbon,
+  Calendar as CalendarIcon,
+} from "lucide-react";
+import { getCounts } from "@/lib/teams";
 
-export default function HomePage() {
-  // Layout supplies the container; we only render content.
+// Revalidate (ISR) every 60s so counts update without full SSR on every hit
+export const revalidate = 60;
+
+/* ---------- Small helper UI blocks (server-only; no client hooks) ---------- */
+function Stat({ icon, value, label }: { icon: ReactNode; value: ReactNode; label: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center">
+      <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-white/10">{icon}</div>
+      <div className="text-3xl font-bold leading-none">{value}</div>
+      <div className="mt-1 text-white/60 text-sm">{label}</div>
+    </div>
+  );
+}
+
+function GameCard({
+  icon,
+  title,
+  tag,
+  bullets,
+}: {
+  icon: ReactNode;
+  title: string;
+  tag: string;
+  bullets: string[];
+}) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-full bg-white/10">{icon}</div>
+          <h3 className="text-xl font-semibold">{title}</h3>
+        </div>
+        <span className="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-sm">{tag}</span>
+      </div>
+      <ul className="mt-3 space-y-2 text-white/80">
+        {bullets.map((b, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className="mt-1 block h-1.5 w-1.5 rounded-full bg-white/70" />
+            <span>{b}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function MatchCard({ title, date, time }: { title: string; date: string; time: string }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+      <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-sm text-white/80">
+        Scheduled
+      </div>
+      <h4 className="mt-3 text-xl font-semibold">{title}</h4>
+      <div className="mt-2 flex items-center gap-3 text-white/70">
+        <CalendarIcon className="h-4 w-4" />
+        <span>{date}</span>
+        <span>•</span>
+        <span>{time}</span>
+      </div>
+    </div>
+  );
+}
+
+function Step({ num, title, desc }: { num: number; title: string; desc: string }) {
+  return (
+    <div className="flex flex-col items-center text-center gap-3">
+      <div className="grid h-16 w-16 place-items-center rounded-full bg-white/10 text-2xl font-bold">
+        {num}
+      </div>
+      <h4 className="text-xl font-semibold">{title}</h4>
+      <p className="text-white/60 max-w-sm">{desc}</p>
+    </div>
+  );
+}
+
+/* ---------- Page ---------- */
+export default async function HomePage() {
+  const counts = await getCounts();
+
   return (
     <div className="space-y-10">
       {/* Hero */}
@@ -16,15 +100,14 @@ export default function HomePage() {
           <Zap className="h-4 w-4" />
           <span>Inter-College Gaming 2025</span>
         </div>
-
         <h1 className="mt-5 text-4xl md:text-5xl font-extrabold tracking-tight">
-          Welcome to<br />GameVerse &apos;25
+          Welcome to
+          <br />
+          GameVerse &apos;25
         </h1>
-
         <p className="mt-3 text-white/70 max-w-xl">
           The ultimate gaming competition featuring BGMI, Free Fire, and Clash Royale
         </p>
-
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Link
             href="/dashboard/teams/register"
@@ -41,11 +124,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Stats */}
+      {/* Dynamic Stats (from Google Sheets) */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard icon={<Users2 className="h-5 w-5" />} value="7" label="Teams" />
-        <StatCard icon={<Trophy className="h-5 w-5" />} value="5" label="Matches" />
-        <StatCard icon={<Gamepad className="h-5 w-5" />} value="3" label="Games" />
+        <Stat icon={<Users2 className="h-5 w-5" />} value={counts.teams} label="Teams" />
+        <Stat icon={<Trophy className="h-5 w-5" />} value={counts.matches} label="Matches" />
+        <Stat icon={<Gamepad className="h-5 w-5" />} value={counts.games} label="Games" />
       </section>
 
       {/* Featured Games */}
@@ -74,7 +157,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Upcoming Matches */}
+      {/* Upcoming Matches (static sample) */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold">Upcoming Matches</h2>
@@ -83,8 +166,8 @@ export default function HomePage() {
           </Link>
         </div>
         <div className="space-y-3">
-          <MatchCard title="BGMI - Match 1" date="Oct 18, 2025" time="03:00 PM" />
-          <MatchCard title="BGMI - Match 2" date="Oct 18, 2025" time="06:00 PM" />
+          <MatchCard title="BGMI - Match 1" date="Feb 1, 2025" time="03:00 PM" />
+          <MatchCard title="BGMI - Match 2" date="Feb 1, 2025" time="06:00 PM" />
         </div>
       </section>
 
