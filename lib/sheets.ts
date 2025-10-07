@@ -123,6 +123,15 @@ export async function getRange(range: string): Promise<string[][]> {
   return (res.data.values || []) as string[][];
 }
 
+export async function setRange(range: string, values: any[][]) {
+  const { sheets, spreadsheetId } = sheetsClient();
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values },
+  });
+}
 /** Aliases for compatibility with existing code */
 export const readSheet = getRange;    // <- fixes your import in app/actions/leaderboard.ts
 export const writeSheet = appendRow;
