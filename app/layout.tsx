@@ -14,8 +14,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-dvh bg-background text-foreground antialiased">
         <Header />
-        {/* Let pages control their own width/padding */}
-        <main>{children}</main>
+        <main>
+          {/* Single, shared container for all routes */}
+          <div className="mx-auto w-full max-w-3xl px-4 py-8">
+            {children}
+          </div>
+        </main>
         <Footer />
       </body>
     </html>
