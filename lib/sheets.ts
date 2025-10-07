@@ -132,6 +132,7 @@ export async function setRange(range: string, values: any[][]) {
     requestBody: { values },
   });
 }
+
 /** Aliases for compatibility with existing code */
 export const readSheet = getRange;    // <- fixes your import in app/actions/leaderboard.ts
 export const writeSheet = appendRow;

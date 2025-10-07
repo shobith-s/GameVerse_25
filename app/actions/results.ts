@@ -1,30 +1,68 @@
-// app/actions/results.ts
 "use server";
+
+/**
+ * Server actions for entering match results and recomputing standings.
+ * Depends on lib/sheets.ts exporting: appendRow, getRange, setRange
+ * Depends on lib/scoring.ts exporting: scoreForResult, type Game
+ *
+ * Sheets layout (adjust ranges if yours differ):
+ *  - Teams:   A:id, B:name, C:game, D:college, E:captain, F:email, G:status, H:points, I:matches, J:wins
+ *  - Results: A:match_id, B:team_id, C:game, D:placement, E:kills, F:did_win, G:points, H:created_at
+ */
 
 import { appendRow, getRange, setRange } from "@/lib/sheets";
 import { scoreForResult, type Game } from "@/lib/scoring";
 
-const TEAMS_RANGE   = "Teams!A2:J";     // read
-const POINTS_RANGE  = "Teams!H2:J";     // write back (H..J)
-const RESULTS_RANGE = "Results!A2:H";   // read/append
+const TEAMS_RANGE = "Teams!A2:J";     // read
+const RESULTS_RANGE = "Results!A2:H";  // read/append
+const POINTS_RANGE = "Teams!H2:J";     // write back (points, matches, wins)
 
-type BRInput = {
+// For bulk intake from the manual grid / CSV upload
+export type BRRow = { teamName: string; placement: number; kills: number };
+
+/** Build a per-game map of normalized team name -> { id, name } from Teams sheet */
+async function getTeamNameMap() {
+  const rows = await getRange(TEAMS_RANGE);
+  const norm = (s: string) => s.trim().toLowerCase();
+
+  const byGame: Record<Game, Map<string, { id: string; name: string }>> = {
+    "BGMI": new Map(),
+    "Free Fire": new Map(),
+    "Clash Royale": new Map(),
+  };
+
+  for (const r of rows) {
+    const id = r[0]?.toString() || "";
+    const name = r[1]?.toString() || "";
+    const game = (r[2]?.toString() || "") as Game;
+    const status = (r[6]?.toString() || "").toLowerCase(); // "active" / "archived"
+
+    if (!id || !name || !game || status === "archived") continue;
+    byGame[game].set(norm(name), { id, name });
+  }
+
+  return byGame;
+}
+
+/** For client-side datalists: list of team names by game */
+export async function getTeamNamesByGame() {
+  const maps = await getTeamNameMap();
+  return {
+    BGMI: Array.from(maps["BGMI"].values()).map((t) => t.name).sort(),
+    "Free Fire": Array.from(maps["Free Fire"].values()).map((t) => t.name).sort(),
+    "Clash Royale": Array.from(maps["Clash Royale"].values()).map((t) => t.name).sort(),
+  } as Record<Game, string[]>;
+}
+
+/** Append a single BR (BGMI / Free Fire) result row to Results */
+export async function submitBattleRoyaleResult(input: {
   matchId: string;
   teamId: string;
-  game: "BGMI" | "Free Fire";
+  game: Exclude<Game, "Clash Royale">;
   placement: number;
   kills: number;
-};
-
-type CRInput = {
-  matchId: string;
-  game: "Clash Royale";
-  winnerTeamId: string;
-  loserTeamId: string;
-};
-
-export async function submitBattleRoyaleResult(input: BRInput) {
-  const { points, wins, matches } = scoreForResult(input.game, {
+}) {
+  const { points } = scoreForResult(input.game, {
     placement: input.placement,
     kills: input.kills,
   });
@@ -35,72 +73,135 @@ export async function submitBattleRoyaleResult(input: BRInput) {
     input.game,
     String(input.placement),
     String(input.kills),
-    "FALSE",                    // did_win
+    "FALSE", // did_win
     String(points),
     new Date().toISOString(),
   ];
-  await appendRow("Results!A2:H", row);
 
-  // Optionally recompute immediately:
-  await recomputeStandings();
+  await appendRow(RESULTS_RANGE, row);
 }
 
-export async function submitClashRoyaleResult(input: CRInput) {
-  // Write two rows: winner and loser
-  const winScore = scoreForResult("Clash Royale", { didWin: true });
-  const loseScore = scoreForResult("Clash Royale", { didWin: false });
+/**
+ * Bulk submit 25-row BR results for a match.
+ * - Resolves team names to team ids (case-insensitive)
+ * - Computes points per row using scoreForResult
+ * - Appends rows to Results and recomputes standings
+ */
+export async function submitBRBatch(params: {
+  matchId: string;
+  game: Exclude<Game, "Clash Royale">;
+  entries: BRRow[];
+}) {
+  const maps = await getTeamNameMap();
+  const map = maps[params.game];
+  const norm = (s: string) => s.trim().toLowerCase();
 
+  const unknown: string[] = [];
+  const rowsToAppend: any[][] = [];
+
+  for (const e of params.entries) {
+    if (!e.teamName) continue; // skip blank rows
+    const found = map.get(norm(e.teamName));
+    if (!found) {
+      unknown.push(e.teamName);
+      continue;
+    }
+
+    const { points } = scoreForResult(params.game, {
+      placement: Number(e.placement || 0),
+      kills: Number(e.kills || 0),
+    });
+
+    rowsToAppend.push([
+      params.matchId,
+      found.id,
+      params.game,
+      String(e.placement || 0),
+      String(e.kills || 0),
+      "FALSE",
+      String(points),
+      new Date().toISOString(),
+    ]);
+  }
+
+  // Append rows (25 is small; simple loop is fine)
+  for (const r of rowsToAppend) {
+    await appendRow(RESULTS_RANGE, r);
+  }
+
+  await recomputeStandings();
+
+  return { appended: rowsToAppend.length, unknown };
+}
+
+/** Clash Royale: record winner/loser for a match and recompute only CR */
+export async function submitClashRoyaleResult(params: {
+  matchId: string;
+  winnerTeamId: string;
+  loserTeamId: string;
+}) {
   const now = new Date().toISOString();
-  await appendRow("Results!A2:H", [
-    input.matchId,
-    input.winnerTeamId,
-    input.game,
-    "", "", "TRUE",
-    String(winScore.points),
-    now,
-  ]);
-  await appendRow("Results!A2:H", [
-    input.matchId,
-    input.loserTeamId,
-    input.game,
-    "", "", "FALSE",
-    String(loseScore.points),
+
+  // Winner row (3 points)
+  await appendRow(RESULTS_RANGE, [
+    params.matchId,
+    params.winnerTeamId,
+    "Clash Royale",
+    "",         // placement
+    "",         // kills
+    "TRUE",     // did_win
+    "3",        // points
     now,
   ]);
 
-  await recomputeStandings();
+  // Loser row (0 points)
+  await appendRow(RESULTS_RANGE, [
+    params.matchId,
+    params.loserTeamId,
+    "Clash Royale",
+    "",
+    "",
+    "FALSE",
+    "0",
+    now,
+  ]);
+
+  await recomputeStandings("Clash Royale");
 }
 
-/** Read all results, recompute totals per team, and write back to Teams!H:J */
+/**
+ * Recompute totals by reading all Results and updating Teams!H:J
+ * - Uses scoreForResult to aggregate points/matches/wins
+ * - Optional gameFilter to recompute only one game
+ */
 export async function recomputeStandings(gameFilter?: Game) {
-  // 1) Load teams (to keep row order for writing back)
+  // 1) Load Teams, keep row order to write back aligned values block
   const teamRows = await getRange(TEAMS_RANGE);
-  // Map teamId -> index in Teams (to update correct row)
+
   const idxById = new Map<string, number>();
-  const teamInfo = teamRows.map((r, i) => {
-    const id = r[0] || "";
-    const game = (r[2] || "") as Game;
+  const teams = teamRows.map((r, i) => {
+    const id = r[0]?.toString() || "";
+    const game = (r[2]?.toString() || "") as Game;
+    const status = (r[6]?.toString() || "").toLowerCase();
     idxById.set(id, i);
-    return { id, game, status: (r[6] || "").toLowerCase() };
+    return { id, game, status };
   });
 
-  // 2) Load all results
+  // 2) Load Results
   const results = await getRange(RESULTS_RANGE);
 
-  // 3) Accumulate
+  // 3) Accumulate per-team
   const totals: Record<string, { points: number; matches: number; wins: number }> = {};
   for (const r of results) {
-    const teamId = r[1] || "";
-    const game = (r[2] || "") as Game;
+    const teamId = r[1]?.toString() || "";
+    const game = (r[2]?.toString() || "") as Game;
+    if (!teamId || !game) continue;
     if (gameFilter && game !== gameFilter) continue;
 
-    const teamIdx = idxById.get(teamId);
-    if (teamIdx === undefined) continue;
-
-    const didWin = (r[5] || "").toUpperCase() === "TRUE";
+    const didWin = (r[5]?.toString() || "").toUpperCase() === "TRUE";
     const placement = Number(r[3] || 0);
     const kills = Number(r[4] || 0);
-    // points can be trusted from column G, but we can also recompute:
+
     const { points, matches, wins } = scoreForResult(game, { placement, kills, didWin });
 
     const t = (totals[teamId] ||= { points: 0, matches: 0, wins: 0 });
@@ -109,39 +210,45 @@ export async function recomputeStandings(gameFilter?: Game) {
     t.wins += wins;
   }
 
-  // 4) Build the write-back block in Teams row order (H..J)
-  const values: (string | number)[][] = teamRows.map((r) => {
-    const teamId = r[0] || "";
+  // 4) Build H..J block in Teams row order
+  const values = teamRows.map((r) => {
+    const teamId = r[0]?.toString() || "";
     const t = totals[teamId] || { points: 0, matches: 0, wins: 0 };
     return [t.points, t.matches, t.wins];
   });
 
-  // 5) Write the block (one request)
-  if (values.length > 0) {
-    await setRange(POINTS_RANGE, values);
-  }
+  // 5) Write once
+  if (values.length > 0) await setRange(POINTS_RANGE, values);
 }
 
-/** Optional: who is the current winner per game (top row) */
+/** Optional helper: current leader per game (useful for a “Champions” section) */
 export async function getWinners() {
-  const teams = await getRange(TEAMS_RANGE);
-  // Reduce to per-game top team by points, then wins
-  const headerless = teams.map((r) => ({
-    id: r[0], name: r[1], game: r[2] as Game,
-    points: Number(r[7] || 0), matches: Number(r[8] || 0), wins: Number(r[9] || 0),
-    status: (r[6] || "").toLowerCase(),
-  })).filter(t => t.status !== "archived");
+  const rows = await getRange(TEAMS_RANGE);
+  type Row = {
+    id: string; name: string; game: Game; status: string;
+    points: number; matches: number; wins: number;
+  };
 
-  const winners = new Map<Game, any>();
-  for (const t of headerless) {
+  const teams: Row[] = rows.map((r) => ({
+    id: r[0]?.toString() || "",
+    name: r[1]?.toString() || "",
+    game: (r[2]?.toString() || "") as Game,
+    status: (r[6]?.toString() || "").toLowerCase(),
+    points: Number(r[7] || 0),
+    matches: Number(r[8] || 0),
+    wins: Number(r[9] || 0),
+  })).filter(t => t.id && t.name && t.status !== "archived");
+
+  const winners = new Map<Game, Row>();
+  for (const t of teams) {
     const prev = winners.get(t.game);
-    if (!prev) winners.set(t.game, t);
-    else {
-      if (
-        t.points > prev.points ||
-        (t.points === prev.points && t.wins > prev.wins) ||
-        (t.points === prev.points && t.wins === prev.wins && t.name.localeCompare(prev.name) < 0)
-      ) winners.set(t.game, t);
+    if (!prev) { winners.set(t.game, t); continue; }
+    if (
+      t.points > prev.points ||
+      (t.points === prev.points && t.wins > prev.wins) ||
+      (t.points === prev.points && t.wins === prev.wins && t.name.localeCompare(prev.name) < 0)
+    ) {
+      winners.set(t.game, t);
     }
   }
   return winners;
