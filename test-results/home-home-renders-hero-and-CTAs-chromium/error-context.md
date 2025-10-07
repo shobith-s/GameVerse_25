@@ -1,0 +1,174 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "GameVerse '25" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e5]
+        - generic [ref=e7]: GameVerse '25
+      - navigation [ref=e8]:
+        - link "Leaderboard" [ref=e9] [cursor=pointer]:
+          - /url: /leaderboard
+        - link "Matches" [ref=e10] [cursor=pointer]:
+          - /url: /matches
+        - link "Register" [ref=e11] [cursor=pointer]:
+          - /url: /dashboard/teams/register
+  - main [ref=e12]:
+    - main [ref=e13]:
+      - generic [ref=e15]:
+        - img [ref=e16]
+        - generic [ref=e18]: GameVerse '25
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - generic [ref=e21]:
+            - img [ref=e22]
+            - generic [ref=e24]: Inter-College Gaming 2025
+          - heading "Welcome to GameVerse '25" [level=1] [ref=e25]:
+            - text: Welcome to
+            - text: GameVerse '25
+          - paragraph [ref=e26]: The ultimate gaming competition featuring BGMI, Free Fire, and Clash Royale
+          - generic [ref=e27]:
+            - link "Register Your Team" [ref=e28] [cursor=pointer]:
+              - /url: /dashboard/teams/register
+              - text: Register Your Team
+              - img [ref=e29]
+            - link "View Leaderboard" [ref=e31] [cursor=pointer]:
+              - /url: /leaderboard
+              - img [ref=e32]
+              - text: View Leaderboard
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - img [ref=e41]
+            - generic [ref=e45]: "7"
+            - generic [ref=e46]: Teams
+          - generic [ref=e47]:
+            - img [ref=e49]
+            - generic [ref=e55]: "5"
+            - generic [ref=e56]: Matches
+          - generic [ref=e57]:
+            - img [ref=e59]
+            - generic [ref=e61]: "3"
+            - generic [ref=e62]: Games
+        - generic [ref=e63]:
+          - generic [ref=e64]:
+            - heading "Featured Games" [level=2] [ref=e65]
+            - paragraph [ref=e66]: Compete in three exciting battle royale and strategy games
+          - generic [ref=e67]:
+            - generic [ref=e68]:
+              - generic [ref=e69]:
+                - generic [ref=e70]:
+                  - img [ref=e72]
+                  - heading "BGMI" [level=3] [ref=e76]
+                - generic [ref=e77]: Battle Royale
+              - list [ref=e78]:
+                - listitem [ref=e79]:
+                  - generic [ref=e81]: Squad-based gameplay
+                - listitem [ref=e82]:
+                  - generic [ref=e84]: Points for kills and placement
+                - listitem [ref=e85]:
+                  - generic [ref=e87]: Multiple matches per tournament
+            - generic [ref=e88]:
+              - generic [ref=e89]:
+                - generic [ref=e90]:
+                  - img [ref=e92]
+                  - heading "Free Fire" [level=3] [ref=e94]
+                - generic [ref=e95]: Battle Royale
+              - list [ref=e96]:
+                - listitem [ref=e97]:
+                  - generic [ref=e99]: Quick matches
+                - listitem [ref=e100]:
+                  - generic [ref=e102]: Character-based abilities
+                - listitem [ref=e103]:
+                  - generic [ref=e105]: Strategic team play
+            - generic [ref=e106]:
+              - generic [ref=e107]:
+                - generic [ref=e108]:
+                  - img [ref=e110]
+                  - heading "Clash Royale" [level=3] [ref=e116]
+                - generic [ref=e117]: Strategy
+              - list [ref=e118]:
+                - listitem [ref=e119]:
+                  - generic [ref=e121]: 1v1 competitive matches
+                - listitem [ref=e122]:
+                  - generic [ref=e124]: Strategic deck building
+                - listitem [ref=e125]:
+                  - generic [ref=e127]: Win-based scoring
+        - generic [ref=e128]:
+          - generic [ref=e129]:
+            - generic [ref=e130]:
+              - heading "Upcoming Matches" [level=2] [ref=e131]
+              - paragraph [ref=e132]: Don't miss these exciting matchups
+            - link [ref=e133] [cursor=pointer]:
+              - /url: /matches
+              - img [ref=e134]
+          - generic [ref=e136]:
+            - generic [ref=e137]:
+              - generic [ref=e138]: Scheduled
+              - heading "BGMI - Match 1" [level=4] [ref=e139]
+              - generic [ref=e140]:
+                - img [ref=e141]
+                - generic [ref=e143]: Feb 1, 2025
+                - generic [ref=e144]: •
+                - generic [ref=e145]: 03:00 PM
+            - generic [ref=e146]:
+              - generic [ref=e147]: Scheduled
+              - heading "BGMI - Match 2" [level=4] [ref=e148]
+              - generic [ref=e149]:
+                - img [ref=e150]
+                - generic [ref=e152]: Feb 1, 2025
+                - generic [ref=e153]: •
+                - generic [ref=e154]: 05:00 PM
+        - generic [ref=e155]:
+          - generic [ref=e156]:
+            - heading "How It Works" [level=2] [ref=e157]
+            - paragraph [ref=e158]: Simple steps to join the competition
+          - generic [ref=e159]:
+            - generic [ref=e160]:
+              - generic [ref=e161]: "1"
+              - heading "Register Team" [level=4] [ref=e162]
+              - paragraph [ref=e163]: Create your team with 4–5 players from your college
+            - generic [ref=e164]:
+              - generic [ref=e165]: "2"
+              - heading "Join Matches" [level=4] [ref=e166]
+              - paragraph [ref=e167]: Participate in scheduled tournament matches
+            - generic [ref=e168]:
+              - generic [ref=e169]: "3"
+              - heading "Submit Results" [level=4] [ref=e170]
+              - paragraph [ref=e171]: Upload screenshots and submit your match results
+            - generic [ref=e172]:
+              - generic [ref=e173]: "4"
+              - heading "Climb Leaderboard" [level=4] [ref=e174]
+              - paragraph [ref=e175]: Earn points and compete for the top spot
+        - generic [ref=e176]:
+          - img [ref=e177]
+          - heading "Ready to Compete?" [level=3] [ref=e183]
+          - paragraph [ref=e184]: Join hundreds of players in the ultimate inter-college gaming tournament
+          - generic [ref=e185]:
+            - link "Register Your Team" [ref=e186] [cursor=pointer]:
+              - /url: /dashboard/teams/register
+              - text: Register Your Team
+              - img [ref=e187]
+            - link "View Leaderboard" [ref=e189] [cursor=pointer]:
+              - /url: /leaderboard
+        - generic [ref=e190]:
+          - navigation [ref=e191]:
+            - link "Leaderboard" [ref=e192] [cursor=pointer]:
+              - /url: /leaderboard
+            - link "Matches" [ref=e193] [cursor=pointer]:
+              - /url: /matches
+            - link "Register" [ref=e194] [cursor=pointer]:
+              - /url: /dashboard/teams/register
+          - paragraph [ref=e195]: © 2025 GameVerse. All rights reserved.
+  - contentinfo [ref=e196]:
+    - navigation [ref=e197]:
+      - link "Leaderboard" [ref=e198] [cursor=pointer]:
+        - /url: /leaderboard
+      - link "Matches" [ref=e199] [cursor=pointer]:
+        - /url: /matches
+      - link "Register" [ref=e200] [cursor=pointer]:
+        - /url: /dashboard/teams/register
+    - paragraph [ref=e201]: © 2025 GameVerse. All rights reserved.
+  - alert [ref=e202]
+```
