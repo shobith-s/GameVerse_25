@@ -1,27 +1,36 @@
-// components/forms/team-register-form.tsx
 'use client';
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-// If the @ alias doesn't work in your project yet, change this import to:
-// import { registerTeam } from '../../app/actions/teams';
 import { registerTeam } from '@/app/actions/teams';
 
-const TeamSchema = z.object({
-  team_name: z.string().min(2, 'Team name is required'),
-  college: z.string().min(2, 'College is required'),
-  game: z.enum(['BGMI', 'Free Fire', 'Clash Royale'], { required_error: 'Pick a game' }),
-  captain_name: z.string().min(2, 'Captain name is required'),
-  captain_email: z.string().email('Valid email required'),
-  captain_phone: z.string().min(7, 'Phone required'),
-  player2: z.string().min(2, 'Player 2 required'),
-  player3: z.string().min(2, 'Player 3 required'),
-  player4: z.string().min(2, 'Player 4 required'),
-  player5: z.string().optional(),
-  agree: z.literal(true, { errorMap: () => ({ message: 'You must agree to the rules' }) }),
-});
+const TeamSchema = z
+  .object({
+    team_name: z.string().min(2, 'Team name is required'),
+    college: z.string().min(2, 'College is required'),
+    game: z.enum(['BGMI', 'Free Fire', 'Clash Royale'], { required_error: 'Pick a game' }),
+    captain_name: z.string().min(2, 'Captain name is required'),
+    captain_email: z.string().email('Valid email required'),
+    captain_phone: z.string().min(7, 'Phone required'),
+    player2: z.string().optional(),
+    player3: z.string().optional(),
+    player4: z.string().optional(),
+    player5: z.string().optional(),
+    agree: z.literal(true, { errorMap: () => ({ message: 'You must agree to the rules' }) }),
+  })
+  .superRefine((val, ctx) => {
+    // BGMI / Free Fire require squad (players 2–4). Clash Royale is solo.
+    if (val.game !== 'Clash Royale') {
+      (['player2', 'player3', 'player4'] as const).forEach((field) => {
+        const v = (val as any)[field];
+        if (!v || v.trim().length < 2) {
+          ctx.addIssue({ code: 'custom', path: [field], message: 'Required for squad games' });
+        }
+      });
+    }
+  });
 
 export type TeamForm = z.infer<typeof TeamSchema>;
 
@@ -31,9 +40,12 @@ export function TeamRegisterForm() {
   const {
     register,
     handleSubmit,
-    reset,
     formState: { errors, isSubmitting },
+    reset,
+    watch,
   } = useForm<TeamForm>({ resolver: zodResolver(TeamSchema) });
+
+  const game = watch('game');
 
   const onSubmit = async (data: TeamForm) => {
     setStatus(null);
@@ -56,6 +68,7 @@ export function TeamRegisterForm() {
             placeholder="Nebula Titans"
           />
         </Field>
+
         <Field label="College" error={errors.college?.message}>
           <input
             {...register('college')}
@@ -63,6 +76,7 @@ export function TeamRegisterForm() {
             placeholder="ACME Institute"
           />
         </Field>
+
         <Field label="Game" error={errors.game?.message}>
           <select
             {...register('game')}
@@ -104,39 +118,48 @@ export function TeamRegisterForm() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 p-4 bg-surface/20">
-        <h3 className="font-semibold mb-3">Players</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Player 2" error={errors.player2?.message}>
-            <input
-              {...register('player2')}
-              className="w-full rounded-xl bg-surface/30 border border-white/10 px-3 py-2 outline-none focus:border-white/30"
-              placeholder="Player 2 name"
-            />
-          </Field>
-          <Field label="Player 3" error={errors.player3?.message}>
-            <input
-              {...register('player3')}
-              className="w-full rounded-xl bg-surface/30 border border-white/10 px-3 py-2 outline-none focus:border-white/30"
-              placeholder="Player 3 name"
-            />
-          </Field>
-          <Field label="Player 4" error={errors.player4?.message}>
-            <input
-              {...register('player4')}
-              className="w-full rounded-xl bg-surface/30 border border-white/10 px-3 py-2 outline-none focus:border-white/30"
-              placeholder="Player 4 name"
-            />
-          </Field>
-          <Field label="Player 5 (optional)" error={errors.player5?.message}>
-            <input
-              {...register('player5')}
-              className="w-full rounded-xl bg-surface/30 border border-white/10 px-3 py-2 outline-none focus:border-white/30"
-              placeholder="Player 5 name"
-            />
-          </Field>
+      {game !== 'Clash Royale' ? (
+        <div className="rounded-2xl border border-white/10 p-4 bg-surface/20">
+          <h3 className="font-semibold mb-3">Players</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Player 2" error={errors.player2?.message}>
+              <input
+                {...register('player2')}
+                className="w-full rounded-xl bg-surface/30 border border-white/10 px-3 py-2 outline-none focus:border-white/30"
+                placeholder="Player 2 name"
+              />
+            </Field>
+            <Field label="Player 3" error={errors.player3?.message}>
+              <input
+                {...register('player3')}
+                className="w-full rounded-xl bg-surface/30 border border-white/10 px-3 py-2 outline-none focus:border-white/30"
+                placeholder="Player 3 name"
+              />
+            </Field>
+            <Field label="Player 4" error={errors.player4?.message}>
+              <input
+                {...register('player4')}
+                className="w-full rounded-xl bg-surface/30 border border-white/10 px-3 py-2 outline-none focus:border-white/30"
+                placeholder="Player 4 name"
+              />
+            </Field>
+            <Field label="Player 5 (optional)" error={errors.player5?.message}>
+              <input
+                {...register('player5')}
+                className="w-full rounded-xl bg-surface/30 border border-white/10 px-3 py-2 outline-none focus:border-white/30"
+                placeholder="Player 5 name"
+              />
+            </Field>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-2xl border border-white/10 p-4 bg-surface/20">
+          <h3 className="font-semibold mb-1">Solo Game</h3>
+          <p className="text-sm text-white/70">
+            Clash Royale is a 1v1 game. No additional player names required.
+          </p>
+        </div>
+      )}
 
       <label className="flex items-start gap-3 text-sm text-white/80">
         <input

@@ -1,81 +1,93 @@
 # Page snapshot
 
 ```yaml
-- generic:
-  - generic [active]:
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
     - generic [ref=e3]:
-      - generic [ref=e4]:
-        - generic [ref=e5]:
-          - navigation [ref=e6]:
-            - button "previous" [disabled] [ref=e7]:
-              - img "previous" [ref=e8]
-            - generic [ref=e10]:
-              - generic [ref=e11]: 1/
-              - text: "1"
-            - button "next" [disabled] [ref=e12]:
-              - img "next" [ref=e13]
-          - img
-        - generic [ref=e15]:
-          - generic [ref=e16]:
-            - img [ref=e17]
-            - generic "Latest available version is detected (15.5.4)." [ref=e19]: Next.js 15.5.4
-            - generic [ref=e20]: Webpack
-          - img
-      - dialog "Build Error" [ref=e22]:
-        - generic [ref=e25]:
+      - link "GameVerse '25" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e5]
+        - generic [ref=e7]: GameVerse '25
+      - navigation [ref=e8]:
+        - link "Leaderboard" [ref=e9] [cursor=pointer]:
+          - /url: /leaderboard
+        - link "Matches" [ref=e10] [cursor=pointer]:
+          - /url: /matches
+        - link "Register" [ref=e11] [cursor=pointer]:
+          - /url: /dashboard/teams/register
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]:
+        - heading "Register Your Team" [level=1] [ref=e15]
+        - paragraph [ref=e16]: Create a team with 4–5 players and choose your game.
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]:
+            - generic [ref=e21]: Team Name
+            - textbox "Team Name" [ref=e22]:
+              - /placeholder: Nebula Titans
+          - generic [ref=e23]:
+            - generic [ref=e24]: College
+            - textbox "College" [ref=e25]:
+              - /placeholder: ACME Institute
           - generic [ref=e26]:
-            - generic [ref=e27]:
-              - generic [ref=e29]: Build Error
-              - generic [ref=e30]:
-                - button "Copy Error Info" [ref=e31] [cursor=pointer]:
-                  - img [ref=e32]
-                - button "No related documentation found" [disabled] [ref=e34]:
-                  - img [ref=e35]
-                - link "Learn more about enabling Node.js inspector for server code with Chrome DevTools" [ref=e37] [cursor=pointer]:
-                  - /url: https://nextjs.org/docs/app/building-your-application/configuring/debugging#server-side-code
-                  - img [ref=e38]
-            - paragraph [ref=e47]: x Unterminated regexp literal
-          - generic [ref=e49]:
-            - generic [ref=e51]:
-              - img [ref=e53]
-              - generic [ref=e57]: ./lib/sheets.ts
-              - button "Open in editor" [ref=e58] [cursor=pointer]:
-                - img [ref=e60]
-            - generic [ref=e63]:
-              - generic [ref=e64]: "Error:"
-              - text: x
-              - generic [ref=e65]: Unterminated regexp literal ,-[
-              - text: C:\Users\shobi\Desktop\GameVerse_25\gameverse\lib\sheets.ts
-              - generic [ref=e66]: :11:1]
-              - generic [ref=e67]: "8"
-              - generic [ref=e68]: "| const auth = new google.auth.JWT("
-              - generic [ref=e69]: "9"
-              - generic [ref=e70]: "| process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,"
-              - text: "10"
-              - generic [ref=e71]: "| undefined,"
-              - text: "11"
-              - generic [ref=e72]: "| process.env.GOOGLE_PRIVATE_KEY?.replace(/ :"
-              - generic [ref=e73]: ^
-              - text: "12"
-              - generic [ref=e74]: "| /g, '"
-              - text: "13"
-              - generic [ref=e75]: "| '),"
-              - text: "13"
-              - generic [ref=e76]:
-                - text: "|"
-                - link "['https://www.googleapis.com/auth/spreadsheets']" [ref=e77] [cursor=pointer]:
-                  - /url: https://www.googleapis.com/auth/spreadsheets
-                - text: "`---- Caused by: Syntax Error"
-        - generic [ref=e78]:
-          - generic [ref=e79]: "1"
-          - generic [ref=e80]: "2"
-    - generic [ref=e85] [cursor=pointer]:
-      - button "Open Next.js Dev Tools" [ref=e86]:
-        - img [ref=e87]
-      - button "Open issues overlay" [ref=e91]:
-        - generic [ref=e92]:
-          - generic [ref=e93]: "0"
-          - generic [ref=e94]: "1"
-        - generic [ref=e95]: Issue
-  - alert [ref=e96]
+            - generic [ref=e27]: Game
+            - combobox "Game" [ref=e28]:
+              - option "Select a game" [selected]
+              - option "BGMI"
+              - option "Free Fire"
+              - option "Clash Royale"
+        - generic [ref=e29]:
+          - heading "Captain Details" [level=3] [ref=e30]
+          - generic [ref=e31]:
+            - generic [ref=e32]:
+              - generic [ref=e33]: Name
+              - textbox "Name" [ref=e34]:
+                - /placeholder: Aarav Kumar
+            - generic [ref=e35]:
+              - generic [ref=e36]: Email
+              - textbox "Email" [ref=e37]:
+                - /placeholder: captain@college.edu
+            - generic [ref=e38]:
+              - generic [ref=e39]: Phone
+              - textbox "Phone" [ref=e40]:
+                - /placeholder: 98765 43210
+        - generic [ref=e41]:
+          - heading "Players" [level=3] [ref=e42]
+          - generic [ref=e43]:
+            - generic [ref=e44]:
+              - generic [ref=e45]: Player 2
+              - textbox "Player 2" [ref=e46]:
+                - /placeholder: Player 2 name
+            - generic [ref=e47]:
+              - generic [ref=e48]: Player 3
+              - textbox "Player 3" [ref=e49]:
+                - /placeholder: Player 3 name
+            - generic [ref=e50]:
+              - generic [ref=e51]: Player 4
+              - textbox "Player 4" [ref=e52]:
+                - /placeholder: Player 4 name
+            - generic [ref=e53]:
+              - generic [ref=e54]: Player 5 (optional)
+              - textbox "Player 5 (optional)" [ref=e55]:
+                - /placeholder: Player 5 name
+        - generic [ref=e56]:
+          - checkbox "I confirm our players are from the same college and agree to the tournament rules." [ref=e57]
+          - generic [ref=e58]: I confirm our players are from the same college and agree to the tournament rules.
+        - generic [ref=e59]:
+          - button "Submit Registration" [ref=e60] [cursor=pointer]
+          - link "View Leaderboard" [ref=e61] [cursor=pointer]:
+            - /url: /leaderboard
+  - contentinfo [ref=e62]:
+    - navigation [ref=e63]:
+      - link "Leaderboard" [ref=e64] [cursor=pointer]:
+        - /url: /leaderboard
+      - link "Matches" [ref=e65] [cursor=pointer]:
+        - /url: /matches
+      - link "Register" [ref=e66] [cursor=pointer]:
+        - /url: /dashboard/teams/register
+    - paragraph [ref=e67]: © 2025 GameVerse. All rights reserved.
+  - button "Open Next.js Dev Tools" [ref=e73] [cursor=pointer]:
+    - img [ref=e74]
+  - alert [ref=e77]
 ```
