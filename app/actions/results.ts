@@ -2,23 +2,35 @@
 
 /**
  * Server actions for entering match results and recomputing standings.
- * Depends on lib/sheets.ts exporting: appendRow, getRange, setRange
- * Depends on lib/scoring.ts exporting: scoreForResult, type Game
  *
- * Sheets layout (adjust ranges if yours differ):
+ * Depends on:
+ *  - lib/sheets.ts exporting: appendRow, getRange, setRange
+ *  - lib/scoring.ts exporting: scoreForResult, type Game
+ *
+ * Sheets layout (adjust ranges only if your headers differ):
  *  - Teams:   A:id, B:name, C:game, D:college, E:captain, F:email, G:status, H:points, I:matches, J:wins
  *  - Results: A:match_id, B:team_id, C:game, D:placement, E:kills, F:did_win, G:points, H:created_at
  */
 
 import { appendRow, getRange, setRange } from "@/lib/sheets";
 import { scoreForResult, type Game } from "@/lib/scoring";
+import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
 
-const TEAMS_RANGE = "Teams!A2:J";     // read
-const RESULTS_RANGE = "Results!A2:H";  // read/append
-const POINTS_RANGE = "Teams!H2:J";     // write back (points, matches, wins)
+const TEAMS_RANGE = "Teams!A2:J"; // read
+const RESULTS_RANGE = "Results!A2:H"; // read/append
+const POINTS_RANGE = "Teams!H2:J"; // write back (points, matches, wins)
 
 // For bulk intake from the manual grid / CSV upload
 export type BRRow = { teamName: string; placement: number; kills: number };
+
+/** Simple auth gate for mutating actions (paired with middleware). */
+function assertAdmin() {
+  const token = cookies().get("admin_token")?.value;
+  if (!token || token !== process.env.ADMIN_TOKEN) {
+    throw new Error("Unauthorized");
+  }
+}
 
 /** Build a per-game map of normalized team name -> { id, name } from Teams sheet */
 async function getTeamNameMap() {
@@ -26,17 +38,16 @@ async function getTeamNameMap() {
   const norm = (s: string) => s.trim().toLowerCase();
 
   const byGame: Record<Game, Map<string, { id: string; name: string }>> = {
-    "BGMI": new Map(),
+    BGMI: new Map(),
     "Free Fire": new Map(),
     "Clash Royale": new Map(),
-  };
+  } as any;
 
   for (const r of rows) {
     const id = r[0]?.toString() || "";
     const name = r[1]?.toString() || "";
     const game = (r[2]?.toString() || "") as Game;
     const status = (r[6]?.toString() || "").toLowerCase(); // "active" / "archived"
-
     if (!id || !name || !game || status === "archived") continue;
     byGame[game].set(norm(name), { id, name });
   }
@@ -62,6 +73,8 @@ export async function submitBattleRoyaleResult(input: {
   placement: number;
   kills: number;
 }) {
+  assertAdmin();
+
   const { points } = scoreForResult(input.game, {
     placement: input.placement,
     kills: input.kills,
@@ -79,6 +92,7 @@ export async function submitBattleRoyaleResult(input: {
   ];
 
   await appendRow(RESULTS_RANGE, row);
+  await recomputeStandings();
 }
 
 /**
@@ -92,6 +106,8 @@ export async function submitBRBatch(params: {
   game: Exclude<Game, "Clash Royale">;
   entries: BRRow[];
 }) {
+  assertAdmin();
+
   const maps = await getTeamNameMap();
   const map = maps[params.game];
   const norm = (s: string) => s.trim().toLowerCase();
@@ -130,7 +146,6 @@ export async function submitBRBatch(params: {
   }
 
   await recomputeStandings();
-
   return { appended: rowsToAppend.length, unknown };
 }
 
@@ -140,6 +155,8 @@ export async function submitClashRoyaleResult(params: {
   winnerTeamId: string;
   loserTeamId: string;
 }) {
+  assertAdmin();
+
   const now = new Date().toISOString();
 
   // Winner row (3 points)
@@ -147,10 +164,10 @@ export async function submitClashRoyaleResult(params: {
     params.matchId,
     params.winnerTeamId,
     "Clash Royale",
-    "",         // placement
-    "",         // kills
-    "TRUE",     // did_win
-    "3",        // points
+    "", // placement
+    "", // kills
+    "TRUE", // did_win
+    "3", // points
     now,
   ]);
 
@@ -175,22 +192,16 @@ export async function submitClashRoyaleResult(params: {
  * - Optional gameFilter to recompute only one game
  */
 export async function recomputeStandings(gameFilter?: Game) {
-  // 1) Load Teams, keep row order to write back aligned values block
   const teamRows = await getRange(TEAMS_RANGE);
 
+  // 1) index by team id (keep row order for writeback)
   const idxById = new Map<string, number>();
-  const teams = teamRows.map((r, i) => {
-    const id = r[0]?.toString() || "";
-    const game = (r[2]?.toString() || "") as Game;
-    const status = (r[6]?.toString() || "").toLowerCase();
-    idxById.set(id, i);
-    return { id, game, status };
-  });
+  teamRows.forEach((r, i) => idxById.set(r[0]?.toString() || "", i));
 
-  // 2) Load Results
+  // 2) load results
   const results = await getRange(RESULTS_RANGE);
 
-  // 3) Accumulate per-team
+  // 3) accumulate (points, matches, wins)
   const totals: Record<string, { points: number; matches: number; wins: number }> = {};
   for (const r of results) {
     const teamId = r[1]?.toString() || "";
@@ -203,22 +214,26 @@ export async function recomputeStandings(gameFilter?: Game) {
     const kills = Number(r[4] || 0);
 
     const { points, matches, wins } = scoreForResult(game, { placement, kills, didWin });
-
     const t = (totals[teamId] ||= { points: 0, matches: 0, wins: 0 });
     t.points += points;
     t.matches += matches;
     t.wins += wins;
   }
 
-  // 4) Build H..J block in Teams row order
+  // 4) build H..J block aligned to Teams row order
   const values = teamRows.map((r) => {
     const teamId = r[0]?.toString() || "";
     const t = totals[teamId] || { points: 0, matches: 0, wins: 0 };
     return [t.points, t.matches, t.wins];
   });
 
-  // 5) Write once
   if (values.length > 0) await setRange(POINTS_RANGE, values);
+
+  // Revalidate pages that show these stats
+  try {
+    revalidatePath("/");
+    revalidatePath("/leaderboard");
+  } catch {}
 }
 
 /** Optional helper: current leader per game (useful for a “Champions” section) */
@@ -229,20 +244,25 @@ export async function getWinners() {
     points: number; matches: number; wins: number;
   };
 
-  const teams: Row[] = rows.map((r) => ({
-    id: r[0]?.toString() || "",
-    name: r[1]?.toString() || "",
-    game: (r[2]?.toString() || "") as Game,
-    status: (r[6]?.toString() || "").toLowerCase(),
-    points: Number(r[7] || 0),
-    matches: Number(r[8] || 0),
-    wins: Number(r[9] || 0),
-  })).filter(t => t.id && t.name && t.status !== "archived");
+  const teams: Row[] = rows
+    .map((r) => ({
+      id: r[0]?.toString() || "",
+      name: r[1]?.toString() || "",
+      game: (r[2]?.toString() || "") as Game,
+      status: (r[6]?.toString() || "").toLowerCase(),
+      points: Number(r[7] || 0),
+      matches: Number(r[8] || 0),
+      wins: Number(r[9] || 0),
+    }))
+    .filter((t) => t.id && t.name && t.status !== "archived");
 
   const winners = new Map<Game, Row>();
   for (const t of teams) {
     const prev = winners.get(t.game);
-    if (!prev) { winners.set(t.game, t); continue; }
+    if (!prev) {
+      winners.set(t.game, t);
+      continue;
+    }
     if (
       t.points > prev.points ||
       (t.points === prev.points && t.wins > prev.wins) ||
