@@ -9,7 +9,7 @@ return (
 <div className="mx-auto max-w-3xl px-4 py-3 flex items-center justify-between">
 <Link href="/" className="flex items-center gap-2 font-semibold">
 <Gamepad2 className="h-5 w-5" />
-<span>GameVerse '25</span>
+<span>GameVerse &apos;25</span>
 </Link>
 <nav className="hidden sm:flex items-center gap-4 text-sm text-white/80">
 <Link href="/leaderboard" className="hover:text-white">Leaderboard</Link>
