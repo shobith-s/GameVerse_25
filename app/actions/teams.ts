@@ -1,62 +1,42 @@
-'use server';
+"use server";
 
-import { z } from 'zod';
-import { appendRow } from '@/lib/sheets';
+import { ensureSheet, appendRow } from "@/lib/sheets";
+import { TEAMS_TAB } from "@/lib/constants";
 
-const TeamSchema = z
-  .object({
-    team_name: z.string().min(2),
-    college: z.string().min(2),
-    game: z.enum(['BGMI', 'Free Fire', 'Clash Royale']),
-    captain_name: z.string().min(2),
-    captain_email: z.string().email(),
-    captain_phone: z.string().min(7),
-    player2: z.string().optional(),
-    player3: z.string().optional(),
-    player4: z.string().optional(),
-    player5: z.string().optional(),
-    agree: z.literal(true),
-  })
-  .superRefine((val, ctx) => {
-    if (val.game !== 'Clash Royale') {
-      (['player2', 'player3', 'player4'] as const).forEach((f) => {
-        const v = (val as any)[f];
-        if (!v || v.trim().length < 2) {
-          ctx.addIssue({ code: 'custom', path: [f], message: 'Required for squad games' });
-        }
-      });
-    }
-  });
+export async function registerTeam(form: FormData) {
+  const teamName = String(form.get("teamName") || "").trim();
+  const game = String(form.get("game") || "").trim(); // "BGMI" | "Free Fire" | "Clash Royale"
+  const captainName = String(form.get("captainName") || "").trim();
+  const phone = String(form.get("phone") || "").trim();
+  const email = String(form.get("email") || "").trim();
+  const college = String(form.get("college") || "").trim();
+  const players = JSON.parse(String(form.get("players") || "[]") || "[]");
 
-export type TeamForm = z.infer<typeof TeamSchema>;
-
-export async function registerTeam(form: TeamForm) {
-  try {
-    const data = TeamSchema.parse(form);
-    const id = `t_${Date.now()}`;
-
-    // Columns A:O must match your Teams header
-    const row = [
-      id,
-      data.team_name,
-      data.game,
-      data.college,
-      data.captain_name,
-      data.captain_email,
-      'active',
-      0,
-      0,
-      0,
-      data.captain_phone,
-      data.player2 ?? '',
-      data.player3 ?? '',
-      data.player4 ?? '',
-      data.player5 ?? '',
-    ];
-
-    await appendRow('Teams!A:O', row);
-    return { ok: true as const, id };
-  } catch (err: any) {
-    return { ok: false as const, error: String(err?.message || err) };
+  if (!teamName || !game || !captainName) {
+    throw new Error("Missing required fields");
   }
+
+  // Make sure the tab exists (first run on a new sheet)
+  await ensureSheet(TEAMS_TAB, [
+    "timestamp", "teamName", "game", "captainName",
+    "phone", "email", "status", "playersJson",
+    "college", "notes", "seed", "meta"
+  ]);
+
+  await appendRow(`${TEAMS_TAB}!A:L`, [
+    new Date().toISOString(),
+    teamName,
+    game,
+    captainName,
+    phone,
+    email,
+    "active",
+    JSON.stringify(players),
+    college,
+    "", // notes
+    "", // seed
+    "", // meta
+  ]);
+
+  return { ok: true };
 }

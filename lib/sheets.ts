@@ -75,12 +75,19 @@ function makeClient(): { api: sheets_v4.Sheets; spreadsheetId: string } {
     if (process.env.NODE_ENV !== "production") {
       console.error("[sheets] Missing Google creds or sheet id", {
         cwd: process.cwd(),
-        emailVar: ["GOOGLE_SERVICE_ACCOUNT_EMAIL", "GOOGLE_SERVICE_EMAIL", "GOOGLE_CLIENT_EMAIL"].find(
-          (n) => !!process.env[n]
-        ),
+        emailVar: [
+          "GOOGLE_SERVICE_ACCOUNT_EMAIL",
+          "GOOGLE_SERVICE_EMAIL",
+          "GOOGLE_CLIENT_EMAIL",
+        ].find((n) => !!process.env[n]),
         keyVar:
-          ["GOOGLE_PRIVATE_KEY", "GOOGLE_SERVICE_KEY"].find((n) => !!process.env[n]) ||
-          ["GOOGLE_PRIVATE_KEY_BASE64", "GOOGLE_SERVICE_KEY_BASE64"].find((n) => !!process.env[n]),
+          ["GOOGLE_PRIVATE_KEY", "GOOGLE_SERVICE_KEY"].find(
+            (n) => !!process.env[n]
+          ) ||
+          [
+            "GOOGLE_PRIVATE_KEY_BASE64",
+            "GOOGLE_SERVICE_KEY_BASE64",
+          ].find((n) => !!process.env[n]),
         hasSheetId: !!getSpreadsheetId(),
       });
     }
@@ -99,7 +106,7 @@ export async function readSheet(range: string): Promise<string[][]> {
   let client: { api: sheets_v4.Sheets; spreadsheetId: string };
   try {
     client = makeClient();
-  } catch (err) {
+  } catch {
     // No creds / sheet id during build or local env — do not crash
     console.warn("[sheets.readSheet] missing creds or sheet id; returning []");
     return [];
@@ -153,6 +160,61 @@ export async function setRange(range: string, values: Grid): Promise<void> {
   });
 }
 
+/** Ensure a tab exists by title and optionally seed the header row. */
+export async function ensureSheet(
+  title: string,
+  header?: string[]
+): Promise<{ sheetId: number }> {
+  const { api, spreadsheetId } = makeClient();
+
+  // 1) Get spreadsheet metadata to find existing tab
+  const meta = await api.spreadsheets.get({ spreadsheetId });
+  const existing = (meta.data.sheets || []).find(
+    (s) => s.properties?.title === title
+  );
+  let sheetId = existing?.properties?.sheetId ?? -1;
+
+  // 2) Create if missing
+  if (!existing) {
+    const resp = await api.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            addSheet: {
+              properties: {
+                title,
+                gridProperties: { rowCount: 1000, columnCount: 26 },
+              },
+            },
+          },
+        ],
+      },
+    });
+    sheetId = resp.data.replies?.[0]?.addSheet?.properties?.sheetId ?? -1;
+  }
+
+  // 3) Seed header if provided and the first row is empty
+  if (header && header.length > 0) {
+    const v = await api.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${title}!1:1`,
+      valueRenderOption: "UNFORMATTED_VALUE",
+    });
+    const firstRow = v.data.values?.[0] ?? [];
+    if (firstRow.length === 0) {
+      await api.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${title}!1:1`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [header] },
+      });
+    }
+  }
+
+  return { sheetId };
+}
+
 // ---- Backward-compatibility aliases ----
-export const getRange = readSheet;   // old code calling getRange() will keep working
+export const getRange = readSheet; // old code calling getRange() will keep working
 export const writeSheet = appendRow; // old code calling writeSheet() will keep working
