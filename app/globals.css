@@ -1,7 +1,7 @@
 /* app/globals.css */
 @import "tailwindcss";
 
-/* Design tokens (HSL channels) */
+/* HSL channels */
 :root {
   --background: 240 10% 6%;
   --foreground: 0 0% 100%;
@@ -9,7 +9,7 @@
   --muted-foreground: 0 0% 65%;
 }
 
-/* Map tokens to Tailwind color names so utilities like bg-background work */
+/* Expose colors to Tailwind utilities */
 @theme {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -17,6 +17,6 @@
   --color-muted-foreground: hsl(var(--muted-foreground));
 }
 
-/* Base resets (optional) */
+/* Optional base resets */
 * { box-sizing: border-box; }
 html, body { height: 100%; }
