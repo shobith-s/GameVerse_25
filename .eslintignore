@@ -1,0 +1,7 @@
+app/actions/results.ts
+app/actions/teams.ts
+app/api/sheets-check/route.ts
+app/dashboard/results/cr/cr-form.tsx
+app/dashboard/results/upload/upload-form.tsx
+components/forms/team-register-form.tsx
+lib/sheets.ts
