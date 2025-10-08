@@ -1,21 +1,18 @@
 // lib/sheets.ts
-// Supports envs:
+// Env keys supported:
 //   GOOGLE_SHEETS_SPREADSHEET_ID
-//   GOOGLE_SERVICE_ACCOUNT_EMAIL
-//   GOOGLE_PRIVATE_KEY (or GOOGLE_PRIVATE_KEY_BASE64)
-// Also accepts these aliases: GOOGLE_SERVICE_EMAIL, GOOGLE_CLIENT_EMAIL,
-// GOOGLE_SERVICE_KEY, GOOGLE_SERVICE_KEY_BASE64, GOOGLE_SHEETS_ID, SHEETS_ID, GOOGLE_SPREADSHEET_ID
+//   GOOGLE_SERVICE_ACCOUNT_EMAIL  (or GOOGLE_SERVICE_EMAIL / GOOGLE_CLIENT_EMAIL)
+//   GOOGLE_PRIVATE_KEY            (or GOOGLE_PRIVATE_KEY_BASE64 / GOOGLE_SERVICE_KEY / GOOGLE_SERVICE_KEY_BASE64)
 
 import { google, sheets_v4 } from "googleapis";
 
-const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]; // read + write
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
-// ---- Server-only guard ----
 if (typeof window !== "undefined") {
-  throw new Error("lib/sheets.ts must not be imported on the client");
+  throw new Error("lib/sheets.ts must not run on the client");
 }
 
-// ---- Small helpers ----
+// ---------- env helpers ----------
 function firstEnv(names: string[]): { name: string | null; value: string } {
   for (const n of names) {
     const v = process.env[n];
@@ -25,37 +22,15 @@ function firstEnv(names: string[]): { name: string | null; value: string } {
 }
 
 function materializeKey(): string {
-  // Prefer plain text
   let key = firstEnv(["GOOGLE_PRIVATE_KEY", "GOOGLE_SERVICE_KEY"]).value;
-
-  // Fallback to base64
   if (!key) {
-    const b64 = firstEnv([
-      "GOOGLE_PRIVATE_KEY_BASE64",
-      "GOOGLE_SERVICE_KEY_BASE64",
-    ]).value;
+    const b64 = firstEnv(["GOOGLE_PRIVATE_KEY_BASE64", "GOOGLE_SERVICE_KEY_BASE64"]).value;
     if (b64) {
-      try {
-        key = Buffer.from(b64, "base64").toString("utf8");
-      } catch {
-        // ignore, validated below
-      }
+      try { key = Buffer.from(b64, "base64").toString("utf8"); } catch {}
     }
   }
-
   if (key.includes("\\n")) key = key.replace(/\\n/g, "\n");
   return key;
-}
-
-function getCreds(): { email: string; key: string } {
-  const email = firstEnv([
-    "GOOGLE_SERVICE_ACCOUNT_EMAIL",
-    "GOOGLE_SERVICE_EMAIL",
-    "GOOGLE_CLIENT_EMAIL",
-  ]).value;
-
-  const key = materializeKey();
-  return { email, key };
 }
 
 function getSpreadsheetId(): string {
@@ -67,28 +42,28 @@ function getSpreadsheetId(): string {
   ]).value;
 }
 
-function makeClient(): { api: sheets_v4.Sheets; spreadsheetId: string } {
-  const { email, key } = getCreds();
-  const spreadsheetId = getSpreadsheetId();
+function getCreds() {
+  const email = firstEnv([
+    "GOOGLE_SERVICE_ACCOUNT_EMAIL",
+    "GOOGLE_SERVICE_EMAIL",
+    "GOOGLE_CLIENT_EMAIL",
+  ]).value;
+  const key = materializeKey();
+  return { email, key };
+}
 
-  if (!email || !key || !spreadsheetId) {
+function makeClient(): { api: sheets_v4.Sheets; spreadsheetId: string } {
+  const spreadsheetId = getSpreadsheetId();
+  const { email, key } = getCreds();
+
+  if (!spreadsheetId || !email || !key) {
     if (process.env.NODE_ENV !== "production") {
-      console.error("[sheets] Missing Google creds or sheet id", {
-        cwd: process.cwd(),
-        emailVar: [
-          "GOOGLE_SERVICE_ACCOUNT_EMAIL",
-          "GOOGLE_SERVICE_EMAIL",
-          "GOOGLE_CLIENT_EMAIL",
-        ].find((n) => !!process.env[n]),
+      console.error("[sheets] Missing creds or sheet id", {
+        spreadsheetId: !!spreadsheetId,
+        emailVar: ["GOOGLE_SERVICE_ACCOUNT_EMAIL", "GOOGLE_SERVICE_EMAIL", "GOOGLE_CLIENT_EMAIL"].find(n => !!process.env[n]),
         keyVar:
-          ["GOOGLE_PRIVATE_KEY", "GOOGLE_SERVICE_KEY"].find(
-            (n) => !!process.env[n]
-          ) ||
-          [
-            "GOOGLE_PRIVATE_KEY_BASE64",
-            "GOOGLE_SERVICE_KEY_BASE64",
-          ].find((n) => !!process.env[n]),
-        hasSheetId: !!getSpreadsheetId(),
+          ["GOOGLE_PRIVATE_KEY", "GOOGLE_SERVICE_KEY"].find(n => !!process.env[n]) ||
+          ["GOOGLE_PRIVATE_KEY_BASE64", "GOOGLE_SERVICE_KEY_BASE64"].find(n => !!process.env[n]),
       });
     }
     throw new Error("Missing Google service account envs or sheet id");
@@ -99,18 +74,74 @@ function makeClient(): { api: sheets_v4.Sheets; spreadsheetId: string } {
   return { api, spreadsheetId };
 }
 
-// ---- Public API ----
+// ---------- utilities ----------
+function sheetTitleFromRange(range: string): string | null {
+  // Supports: Sheet!A:Z or 'Sheet With Spaces'!A:Z
+  const m = range.match(/^'([^']+)'!/); // quoted
+  if (m) return m[1];
+  const u = range.match(/^([^!'"]+)!/); // unquoted
+  if (u) return u[1];
+  return null;
+}
 
-/** Read a range; fails safe (returns []) if 404 or creds missing. */
-export async function readSheet(range: string): Promise<string[][]> {
-  let client: { api: sheets_v4.Sheets; spreadsheetId: string };
-  try {
-    client = makeClient();
-  } catch {
-    // No creds / sheet id during build or local env — do not crash
-    console.warn("[sheets.readSheet] missing creds or sheet id; returning []");
-    return [];
+// ---------- public API ----------
+export type Cell = string | number | boolean | null;
+export type Row = Cell[];
+export type Grid = Row[];
+
+export async function listSheets(): Promise<string[]> {
+  const { api, spreadsheetId } = makeClient();
+  const meta = await api.spreadsheets.get({ spreadsheetId });
+  return (meta.data.sheets || [])
+    .map(s => s.properties?.title)
+    .filter((t): t is string => !!t);
+}
+
+/** Ensure a tab exists; optionally seed header row if empty. */
+export async function ensureSheet(title: string, header?: string[]): Promise<void> {
+  const { api, spreadsheetId } = makeClient();
+  const titles = await listSheets();
+  if (!titles.includes(title)) {
+    await api.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: { requests: [{ addSheet: { properties: { title } } }] },
+    });
+    if (header?.length) {
+      await api.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${title}!A1:${String.fromCharCode(64 + header.length)}1`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [header] },
+      });
+    }
+    return;
   }
+
+  // If header provided and first row is empty, seed header.
+  if (header?.length) {
+    const cur = await api.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${title}!1:1`,
+      valueRenderOption: "UNFORMATTED_VALUE",
+    });
+    const row0 = (cur.data.values?.[0] as string[] | undefined) ?? [];
+    const empty = row0.length === 0 || row0.every(c => c === "" || c == null);
+    if (empty) {
+      await api.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${title}!A1:${String.fromCharCode(64 + header.length)}1`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [header] },
+      });
+    }
+  }
+}
+
+/** Read a range; safe-return [] on 404 to avoid crashing builds. */
+export async function readSheet(range: string): Promise<string[][]> {
+  let client;
+  try { client = makeClient(); }
+  catch { return []; }
 
   try {
     const res = await client.api.spreadsheets.values.get({
@@ -119,37 +150,45 @@ export async function readSheet(range: string): Promise<string[][]> {
       valueRenderOption: "UNFORMATTED_VALUE",
     });
     return (res.data.values as string[][]) ?? [];
-  } catch (err: unknown) {
-    const e = err as { code?: number; response?: { status?: number }; errors?: unknown };
-    if (e?.code === 404 || e?.response?.status === 404) {
-      console.warn("[sheets.readSheet] 404 for range", range);
+  } catch (err: any) {
+    if (err?.code === 404 || err?.response?.status === 404) {
+      console.warn("[sheets.readSheet] 404 for range:", range);
       return [];
     }
-    console.error("[sheets.readSheet] error", {
-      code: e?.code,
-      status: e?.response?.status,
-      errors: e?.errors,
-    });
     throw err;
   }
 }
 
-/** Append a single row (throws on failure — used for admin writes). */
-export type Cell = string | number | boolean | null;
-export type Row = Cell[];
-export type Grid = Row[];
-
+/** Append but auto-create the tab if the API says “not found”, then retry once. */
 export async function appendRow(range: string, values: Row): Promise<void> {
   const { api, spreadsheetId } = makeClient();
-  await api.spreadsheets.values.append({
-    spreadsheetId,
-    range,
-    valueInputOption: "USER_ENTERED",
-    requestBody: { values: [values] },
-  });
+  try {
+    await api.spreadsheets.values.append({
+      spreadsheetId,
+      range,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [values] },
+    });
+    return;
+  } catch (err: any) {
+    const title = sheetTitleFromRange(range);
+    const notFound = err?.code === 404 || err?.response?.status === 404;
+    if (notFound && title) {
+      // ensure and retry once
+      await ensureSheet(title);
+      await api.spreadsheets.values.append({
+        spreadsheetId,
+        range,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [values] },
+      });
+      return;
+    }
+    throw err;
+  }
 }
 
-/** Set a range with a 2D grid (throws on failure). */
+/** Update a rectangular grid. */
 export async function setRange(range: string, values: Grid): Promise<void> {
   const { api, spreadsheetId } = makeClient();
   await api.spreadsheets.values.update({
@@ -160,61 +199,6 @@ export async function setRange(range: string, values: Grid): Promise<void> {
   });
 }
 
-/** Ensure a tab exists by title and optionally seed the header row. */
-export async function ensureSheet(
-  title: string,
-  header?: string[]
-): Promise<{ sheetId: number }> {
-  const { api, spreadsheetId } = makeClient();
-
-  // 1) Get spreadsheet metadata to find existing tab
-  const meta = await api.spreadsheets.get({ spreadsheetId });
-  const existing = (meta.data.sheets || []).find(
-    (s) => s.properties?.title === title
-  );
-  let sheetId = existing?.properties?.sheetId ?? -1;
-
-  // 2) Create if missing
-  if (!existing) {
-    const resp = await api.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            addSheet: {
-              properties: {
-                title,
-                gridProperties: { rowCount: 1000, columnCount: 26 },
-              },
-            },
-          },
-        ],
-      },
-    });
-    sheetId = resp.data.replies?.[0]?.addSheet?.properties?.sheetId ?? -1;
-  }
-
-  // 3) Seed header if provided and the first row is empty
-  if (header && header.length > 0) {
-    const v = await api.spreadsheets.values.get({
-      spreadsheetId,
-      range: `${title}!1:1`,
-      valueRenderOption: "UNFORMATTED_VALUE",
-    });
-    const firstRow = v.data.values?.[0] ?? [];
-    if (firstRow.length === 0) {
-      await api.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${title}!1:1`,
-        valueInputOption: "USER_ENTERED",
-        requestBody: { values: [header] },
-      });
-    }
-  }
-
-  return { sheetId };
-}
-
-// ---- Backward-compatibility aliases ----
-export const getRange = readSheet; // old code calling getRange() will keep working
-export const writeSheet = appendRow; // old code calling writeSheet() will keep working
+// Back-compat aliases
+export const getRange = readSheet;
+export const writeSheet = appendRow;
