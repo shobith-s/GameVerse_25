@@ -1,39 +1,34 @@
 // lib/sheets.ts
-// Supports your env names:
-//   - GOOGLE_SHEETS_SPREADSHEET_ID
-//   - GOOGLE_SERVICE_ACCOUNT_EMAIL
-//   - GOOGLE_PRIVATE_KEY  (or GOOGLE_PRIVATE_KEY_BASE64)
-// Also supports common aliases for flexibility.
+// Supports envs:
+//   GOOGLE_SHEETS_SPREADSHEET_ID
+//   GOOGLE_SERVICE_ACCOUNT_EMAIL
+//   GOOGLE_PRIVATE_KEY (or GOOGLE_PRIVATE_KEY_BASE64)
+// Also accepts these aliases: GOOGLE_SERVICE_EMAIL, GOOGLE_CLIENT_EMAIL,
+// GOOGLE_SERVICE_KEY, GOOGLE_SERVICE_KEY_BASE64, GOOGLE_SHEETS_ID, SHEETS_ID, GOOGLE_SPREADSHEET_ID
 
-import { google } from "googleapis";
+import { google, sheets_v4 } from "googleapis";
 
-const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]; // read+write
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]; // read + write
 
-// Server-only guard
+// ---- Server-only guard ----
 if (typeof window !== "undefined") {
   throw new Error("lib/sheets.ts must not be imported on the client");
 }
 
-/** Return the first non-empty env var among candidates */
-function firstEnv(cands: string[]): { name: string | null; value: string } {
-  for (const n of cands) {
+// ---- Small helpers ----
+function firstEnv(names: string[]): { name: string | null; value: string } {
+  for (const n of names) {
     const v = process.env[n];
     if (typeof v === "string" && v.length > 0) return { name: n, value: v };
   }
   return { name: null, value: "" };
 }
 
-/** Get private key from env (plain or base64), handling \n escaping */
 function materializeKey(): string {
-  // Prefer plain text first
-  const keyPlain = firstEnv([
-    "GOOGLE_PRIVATE_KEY",
-    "GOOGLE_SERVICE_KEY",
-  ]).value;
+  // Prefer plain text
+  let key = firstEnv(["GOOGLE_PRIVATE_KEY", "GOOGLE_SERVICE_KEY"]).value;
 
-  let key = keyPlain;
-
-  // Fallback to base64 variants
+  // Fallback to base64
   if (!key) {
     const b64 = firstEnv([
       "GOOGLE_PRIVATE_KEY_BASE64",
@@ -43,7 +38,7 @@ function materializeKey(): string {
       try {
         key = Buffer.from(b64, "base64").toString("utf8");
       } catch {
-        // ignore; validated below
+        // ignore, validated below
       }
     }
   }
@@ -52,7 +47,7 @@ function materializeKey(): string {
   return key;
 }
 
-function getCreds() {
+function getCreds(): { email: string; key: string } {
   const email = firstEnv([
     "GOOGLE_SERVICE_ACCOUNT_EMAIL",
     "GOOGLE_SERVICE_EMAIL",
@@ -60,16 +55,25 @@ function getCreds() {
   ]).value;
 
   const key = materializeKey();
-
   return { email, key };
 }
 
-function sheetsClient() {
-  const { email, key } = getCreds();
+function getSpreadsheetId(): string {
+  return firstEnv([
+    "GOOGLE_SHEETS_SPREADSHEET_ID",
+    "GOOGLE_SHEETS_ID",
+    "SHEETS_ID",
+    "GOOGLE_SPREADSHEET_ID",
+  ]).value;
+}
 
-  if (!email || !key) {
+function makeClient(): { api: sheets_v4.Sheets; spreadsheetId: string } {
+  const { email, key } = getCreds();
+  const spreadsheetId = getSpreadsheetId();
+
+  if (!email || !key || !spreadsheetId) {
     if (process.env.NODE_ENV !== "production") {
-      console.error("[sheets] Missing Google creds", {
+      console.error("[sheets] Missing Google creds or sheet id", {
         cwd: process.cwd(),
         emailVar: ["GOOGLE_SERVICE_ACCOUNT_EMAIL", "GOOGLE_SERVICE_EMAIL", "GOOGLE_CLIENT_EMAIL"].find(
           (n) => !!process.env[n]
@@ -77,38 +81,60 @@ function sheetsClient() {
         keyVar:
           ["GOOGLE_PRIVATE_KEY", "GOOGLE_SERVICE_KEY"].find((n) => !!process.env[n]) ||
           ["GOOGLE_PRIVATE_KEY_BASE64", "GOOGLE_SERVICE_KEY_BASE64"].find((n) => !!process.env[n]),
-        hasSheetId: !!firstEnv([
-          "GOOGLE_SHEETS_SPREADSHEET_ID",
-          "GOOGLE_SHEETS_ID",
-          "SHEETS_ID",
-          "GOOGLE_SPREADSHEET_ID",
-        ]).value,
+        hasSheetId: !!getSpreadsheetId(),
       });
     }
-    throw new Error("Missing Google service account envs");
+    throw new Error("Missing Google service account envs or sheet id");
   }
 
   const auth = new google.auth.JWT({ email, key, scopes: SCOPES });
-  const sheets = google.sheets({ version: "v4", auth });
-
-  const spreadsheetId = firstEnv([
-    "GOOGLE_SHEETS_SPREADSHEET_ID",
-    "GOOGLE_SHEETS_ID",
-    "SHEETS_ID",
-    "GOOGLE_SPREADSHEET_ID",
-  ]).value;
-
-  if (!spreadsheetId) {
-    throw new Error("Missing GOOGLE_SHEETS_SPREADSHEET_ID (or GOOGLE_SHEETS_ID / SHEETS_ID)");
-  }
-
-  return { sheets, spreadsheetId };
+  const api = google.sheets({ version: "v4", auth });
+  return { api, spreadsheetId };
 }
 
-/** Append a single row to a range (USER_ENTERED) */
-export async function appendRow(range: string, values: any[]) {
-  const { sheets, spreadsheetId } = sheetsClient();
-  await sheets.spreadsheets.values.append({
+// ---- Public API ----
+
+/** Read a range; fails safe (returns []) if 404 or creds missing. */
+export async function readSheet(range: string): Promise<string[][]> {
+  let client: { api: sheets_v4.Sheets; spreadsheetId: string };
+  try {
+    client = makeClient();
+  } catch (err) {
+    // No creds / sheet id during build or local env — do not crash
+    console.warn("[sheets.readSheet] missing creds or sheet id; returning []");
+    return [];
+  }
+
+  try {
+    const res = await client.api.spreadsheets.values.get({
+      spreadsheetId: client.spreadsheetId,
+      range,
+      valueRenderOption: "UNFORMATTED_VALUE",
+    });
+    return (res.data.values as string[][]) ?? [];
+  } catch (err: unknown) {
+    const e = err as { code?: number; response?: { status?: number }; errors?: unknown };
+    if (e?.code === 404 || e?.response?.status === 404) {
+      console.warn("[sheets.readSheet] 404 for range", range);
+      return [];
+    }
+    console.error("[sheets.readSheet] error", {
+      code: e?.code,
+      status: e?.response?.status,
+      errors: e?.errors,
+    });
+    throw err;
+  }
+}
+
+/** Append a single row (throws on failure — used for admin writes). */
+export type Cell = string | number | boolean | null;
+export type Row = Cell[];
+export type Grid = Row[];
+
+export async function appendRow(range: string, values: Row): Promise<void> {
+  const { api, spreadsheetId } = makeClient();
+  await api.spreadsheets.values.append({
     spreadsheetId,
     range,
     valueInputOption: "USER_ENTERED",
@@ -116,16 +142,10 @@ export async function appendRow(range: string, values: any[]) {
   });
 }
 
-/** Read a range and return rows as string[][] */
-export async function getRange(range: string): Promise<string[][]> {
-  const { sheets, spreadsheetId } = sheetsClient();
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-  return (res.data.values || []) as string[][];
-}
-
-export async function setRange(range: string, values: any[][]) {
-  const { sheets, spreadsheetId } = sheetsClient();
-  await sheets.spreadsheets.values.update({
+/** Set a range with a 2D grid (throws on failure). */
+export async function setRange(range: string, values: Grid): Promise<void> {
+  const { api, spreadsheetId } = makeClient();
+  await api.spreadsheets.values.update({
     spreadsheetId,
     range,
     valueInputOption: "USER_ENTERED",
@@ -133,6 +153,6 @@ export async function setRange(range: string, values: any[][]) {
   });
 }
 
-/** Aliases for compatibility with existing code */
-export const readSheet = getRange;    // <- fixes your import in app/actions/leaderboard.ts
-export const writeSheet = appendRow;
+// ---- Backward-compatibility aliases ----
+export const getRange = readSheet;   // old code calling getRange() will keep working
+export const writeSheet = appendRow; // old code calling writeSheet() will keep working

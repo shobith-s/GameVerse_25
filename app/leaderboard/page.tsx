@@ -1,89 +1,111 @@
 // app/leaderboard/page.tsx
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
-import { Trophy } from "lucide-react";
-import { getLeaderboard, type Game } from "@/app/actions/leaderboard";
+import { getLeaderboard } from "@/app/actions/leaderboard";
 
-export const revalidate = 60; // refresh server-rendered data roughly every minute
-
+type Game = "BGMI" | "Free Fire" | "Clash Royale";
 const GAMES: Game[] = ["BGMI", "Free Fire", "Clash Royale"];
 
-type SearchParams = { [key: string]: string | string[] | undefined };
-
-function cx(...cls: (string | false | null | undefined)[]) {
-  return cls.filter(Boolean).join(" ");
+function hrefFor(game: Game) {
+  return `/leaderboard?game=${encodeURIComponent(game)}`;
 }
 
 export default async function LeaderboardPage({
   searchParams,
 }: {
-  searchParams: SearchParams;
+  searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const param = typeof searchParams?.game === "string" ? searchParams.game : undefined;
-  const selected: Game = (GAMES.includes(param as Game) ? (param as Game) : "BGMI");
+  const raw = (Array.isArray(searchParams?.game)
+    ? searchParams?.game?.[0]
+    : searchParams?.game) as string | undefined;
 
-  const rows = await getLeaderboard(selected);
+  const game: Game = (GAMES.includes(raw as Game) ? raw : "BGMI") as Game;
+
+  // Safe fetch — never fail the page during build/deploy
+  let rows: any[] = [];
+  try {
+    rows = await getLeaderboard(game);
+  } catch (e) {
+    console.warn("[leaderboard] falling back to empty rows:", e);
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+      <section className="rounded-3xl border border-white/10 bg-surface/30 p-5 md:p-8">
         <h1 className="text-3xl font-bold">Leaderboard</h1>
         <p className="text-white/60">Track team rankings across all games</p>
-      </section>
 
-      {/* Tabs + Table */}
-      <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-3">
-        {/* Tabs */}
-        <div className="grid grid-cols-3 gap-3">
-          {GAMES.map((g) => (
-            <Link
-              key={g}
-              href={{ pathname: "/leaderboard", query: { game: g } }}
-              className={cx(
-                "inline-flex items-center justify-center rounded-xl px-4 py-3 border text-sm font-medium",
-                selected === g
-                  ? "bg-white/10 border-white/20"
-                  : "bg-transparent border-white/10 hover:bg-white/5"
-              )}
-            >
-              {g}
-            </Link>
-          ))}
+        {/* Tabs (server links) */}
+        <div className="mt-5">
+          <div className="rounded-2xl border border-white/10 p-2 bg-white/[0.03]">
+            <div className="grid grid-cols-3 gap-2">
+              {GAMES.map((g) => {
+                const active = g === game;
+                return (
+                  <Link
+                    key={g}
+                    href={hrefFor(g)}
+                    prefetch
+                    className={[
+                      "inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium border",
+                      active
+                        ? "bg-white text-black border-white"
+                        : "bg-transparent text-white/80 border-white/15 hover:bg-white/10",
+                    ].join(" ")}
+                  >
+                    {g}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Table */}
-        <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-          <div className="grid grid-cols-[56px_1fr_120px_120px_120px_100px] items-center gap-3 px-4 py-3 text-sm text-white/70 border-b border-white/10">
-            <div className="font-semibold">Rank</div>
-            <div className="font-semibold">Team</div>
-            <div className="font-semibold">Points</div>
-            <div className="font-semibold">Matches</div>
-            <div className="font-semibold">Wins</div>
-            <div className="font-semibold">Win Rate</div>
-          </div>
-
-          {rows.length === 0 && (
-            <div className="px-4 py-6 text-white/60">
-              No teams yet for {selected}. Be the first to register!
-            </div>
-          )}
-
-          {rows.map((r) => (
-            <div
-              key={r.id}
-              className="grid grid-cols-[56px_1fr_120px_120px_120px_100px] items-center gap-3 px-4 py-3 border-t border-white/10"
-            >
-              <div className="flex items-center gap-2 text-white/80">
-                <Trophy className="h-4 w-4" />
-                <span>{r.rank}</span>
-              </div>
-              <div className="truncate">{r.name}</div>
-              <div>{r.points}</div>
-              <div>{r.matches}</div>
-              <div>{r.wins}</div>
-              <div>{r.winRate}</div>
-            </div>
-          ))}
+        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="text-white/70 text-sm">
+              <tr className="border-b border-white/10">
+                <th className="py-3 px-4">Rank</th>
+                <th className="py-3 px-4">Team</th>
+                <th className="py-3 px-4">Points</th>
+                <th className="py-3 px-4">Matches</th>
+                <th className="py-3 px-4">Wins</th>
+                <th className="py-3 px-4">Win Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-6 px-4 text-white/60">
+                    No results yet for {game}. Check back later.
+                  </td>
+                </tr>
+              ) : (
+                rows.map((r, i) => (
+                  <tr
+                    key={`${r.team ?? r.name ?? i}`}
+                    className="border-t border-white/10"
+                  >
+                    <td className="py-3 px-4">{r.rank ?? i + 1}</td>
+                    <td className="py-3 px-4">{r.team ?? r.name ?? "—"}</td>
+                    <td className="py-3 px-4">{r.points ?? 0}</td>
+                    <td className="py-3 px-4">{r.matches ?? 0}</td>
+                    <td className="py-3 px-4">{r.wins ?? 0}</td>
+                    <td className="py-3 px-4">
+                      {typeof r.winRate === "number"
+                        ? `${Math.round(r.winRate * 100)}%`
+                        : typeof r.winRate === "string"
+                        ? r.winRate
+                        : "0%"}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
     </div>
